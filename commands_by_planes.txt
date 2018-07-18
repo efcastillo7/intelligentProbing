@@ -1,4 +1,4 @@
-######## CONTROLLER
+######## CONTROLLER SERVER
 
 
 ######## MININET
