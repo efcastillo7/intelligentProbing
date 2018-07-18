@@ -1,12 +1,44 @@
-######## CONTROLLER SERVER
+########################################
+######## CONTROLLER SERVER #############
+########################################
 
+	Ensure that no other controller is present	
+ 		# killall controller
 
-######## MININET
+ 	Run ryu controller with api_rest
+ 		# cd ryu/
+ 		# ryu-manager ryu/app/simple_switch_13.py ryu/app/ofctl_rest.py	
 
+ 	Connection
+ 		# ssh ryu@143.54.12.113	
 
-######## MANAGEMENT
+ 	A simple & low-overhead web dashboard for linux systems
+ 		# cd linux-dash/app/server
+ 		# sudo node index.js
+ 		# go to http://143.54.12.113:8080/
 
+ 	The Slurm Workload Manager -> https://slurm.schedmd.com/
+ 		# sudo apt-get install slurm
+ 		# slurm -c -i enp0s3 "interface name"
 
-######## LINUX
+ 	List connections tcp udp 
+ 		--> https://lamiradadelreplicante.com/2012/01/12/mostrar-conexiones-activas-procesos-y-puertos-abiertos-con-netstat/
+ 		# netstat -putona |grep ':6881'	
 
+########################################
+########       MININET     #############
+########################################
+
+	Clear all mininet components
+		# mn -c
+
+		# sudo mn --topo single,3 --mac --controller remote --switch ovsk
+
+########################################
+########     MANAGEMENT    #############
+########################################
+
+########################################
+######## 		LINUX      #############
+########################################
 
