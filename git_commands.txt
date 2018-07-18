@@ -1,0 +1,47 @@
+##### git hub #########
+create repository en github e.g., "prueba_consola"
+create directory with the same name that repository github "prueba_consola"
+cd pruba_consola
+ssh-keygen
+save ssh-keygen
+git config --global user.email "efcastilloq@gmail.com"
+git config --global user.name "PC Unicauca"
+gedit ~/.ssh/ prueba_consola.pub
+add ssh key in github --> https://github.com/settings/keys
+
+git init
+touch README2
+git add README2 o para agregar todos los archivos git add .
+git status
+git commit -m README2 "Algun comentario" --> Alista los archivos para subir al github
+git remote add origin https://github.com/efcastillo7/prueba_consola.git --> agrega el commit
+git pull origin master --> trae los archivos del repositorio github al local
+git push origin master --> sube los archivos locales al github
+
+despues de editar alguno archivo lo agregamos al repositorio e.g., README.md
+git add README.md
+git commit -m "Archivo modificado y subido desde local"
+git push origin master
+
+ramas o branch
+git branch dev -->crea una rama
+git branch dev2 
+
+git checkout dev --> para cambiar a la rama dev
+git checkout dev2 --> para cambiar a la rama dev2
+git checkout master --> para cambiar a la rama master
+
+Nota: cuando hago un cambio en una rama, este cambio solo queda guardado en dicha rama
+
+gedit REAME.md
+git add .
+git commit -m "Cambio realizado desde la rama dev"
+
+Nota: puedes seguir cambiando de branch
+git branch -->lista los branch creados
+
+git checkout master -->guardar los cambios de la rama dev en master
+git merge dev
+git push origin master
+
+git merge master -->sincronizar los cambios del master
