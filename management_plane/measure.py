@@ -56,7 +56,7 @@ while True:
     idata = GetNetworkInterfaces()
     for eth in idata:
 
-        if eth["interface"] == "wlp3s0":
+        if eth["interface"] == "enp3s0":
 
             #   Calculate the Rate
             ifaces[eth["interface"]]["rxrate"]      =   (eth["rx"]["bytes"] - ifaces[eth["interface"]]["recvbytes"]) / INTERVAL

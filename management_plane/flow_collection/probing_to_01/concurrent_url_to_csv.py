@@ -50,6 +50,7 @@ def fetch(url):
 	body=r.json()
 	sno=url[-1]
 	data=body[sno]
+	print(type(data))
 	#data.append({'Fer':count_iter})	
 	fp=open(url[len(baseurl):-2]+'_'+sno+'.csv', 'a')
 	if fp.tell()==0:
