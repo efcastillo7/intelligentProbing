@@ -99,16 +99,46 @@ def startNetwork():
     info('** Starting the network\n')
     net.start()
 
-    net.pingAll()
+    """
+    count = len(net.hosts)
+    for i in range(0, int(len(net.hosts))):
+      print("Modulo 7...")
+      net.hosts[ i ].cmd( 'iperf -s -u -i 1 &' )
 
+    i = 0
+    for j in range(0, int(len(net.hosts))):
+      i = ( i + 1 ) % count
+      ip = net.hosts[ i ].IP()
+      print("Modulo Cliente...", ip)
+      net.hosts[ i ].sendCmd( 'iperf -u -b 1m -n 1000 -c ' + ip )
+    """
+
+    net.pingAll()
+    """
+    countx = 0
+    for i in range(0, int(len(net.hosts))):
+      if i != 0 and i != 1:
+        if (i % 7) == 0:
+          print("Modulo 7...", net.hosts[i].IP())
+          countx += 1
+          #net.hosts[i].cmd('iperf -s &')
+        else:
+          net.hosts[i].sendCmd('iperf -t 99999 -i 1 -c' + net.hosts[i].IP())
+          print("Modulo xxx...", net.hosts[i].IP())
+"""
 
     info('** Running CLI\n')
     CLI(net)
 
+def waiting( self ):
+        "Are we waiting for output?"
+        return self.node.waiting
 
 def stopNetwork():
     if net is not None:
         info('** Tearing down Overlay network\n')
+        #net.hosts[0].cmd("pkill -9 iperf")
+        #net.hosts[0].cmd("kill %iperf")
         net.stop()
 
 if __name__ == '__main__':

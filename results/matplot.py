@@ -14,8 +14,11 @@ x = []
 y = []
 z = []
 
-csv_file = 'speed_' + sys.argv[1] + '.csv'
-csv_plot = 'speed_' + sys.argv[1] + '.png'
+currentPath = getcwd()
+print(currentPath)
+
+csv_file = currentPath + '/probing_'+ sys.argv[1] + 's/speed_' + sys.argv[1] + '.csv'
+csv_plot = currentPath + '/probing_'+ sys.argv[1] + 's/speed_' + sys.argv[1] + '.png'
 
 if not path.exists(csv_file):
         print("The file does not exist")
@@ -75,6 +78,42 @@ plt.annotate('Text', xy=(200, 1000), xytext=(250, 500),
 
 
 #plt.text(200, 450, "Independence Day", ha='center', **style)
-#plt.savefig(csv_plot, dpi=300)
-plt.show()
+plt.savefig(csv_plot, dpi=300)
+#plt.show()
 
+####################### CPU PLOT ##############################3
+
+csv_file_cpu = currentPath + '/probing_'+ sys.argv[1] + 's/cpu_usage_' + sys.argv[1] + '.csv'
+csv_plot_cpu = currentPath + '/probing_'+ sys.argv[1] + 's/cpu_usage_' + sys.argv[1] + '.png'
+
+x = []
+y = []
+z = []
+
+with open(csv_file_cpu,'r') as csvfile:
+    plots = csv.DictReader(csvfile)
+    for row in plots:
+        x.append(float(row["TIME"]))
+        y.append(float(row["CPU"]))
+        z.append(float(row["REAL_MB"]))
+
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+
+ax.plot(x, y, '-', lw=1, color='r')
+
+ax.set_ylabel('CPU (%)', color='g', fontsize=9)
+ax.set_xlabel('Time (s)', fontsize=9)
+ax.set_ylim(0., max(y) * 1.2)
+
+ax2 = ax.twinx()
+
+ax2.plot(x, z, '-', lw=1, color='b')
+ax2.set_ylim(0., max(z) * 1.2)
+
+ax2.set_ylabel('Real Memory (MB)', color='b', fontsize=9)
+
+ax.grid()
+
+fig.savefig(csv_plot_cpu, dpi=300)
+#plt.show()

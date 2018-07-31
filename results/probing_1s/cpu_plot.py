@@ -12,15 +12,7 @@ x = []
 y = []
 z = []
 
-currentPath = getcwd()
-print(currentPath)
-
-csv_file = currentPath + '/probing_'+ sys.argv[1] + 's/speed_' + sys.argv[1] + '.csv'
-csv_plot = currentPath + '/probing_'+ sys.argv[1] + 's/speed_' + sys.argv[1] + '.png'
-
-
-
-with open('cpu_usage_001.csv','r') as csvfile:
+with open('cpu_usage_1.csv','r') as csvfile:
     plots = csv.DictReader(csvfile)
     for row in plots:
         x.append(float(row["TIME"]))
