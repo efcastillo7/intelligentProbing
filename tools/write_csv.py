@@ -12,7 +12,8 @@ def WriteDictToCSV(csv_file,csv_columns,dict_data,csv_function='a'):
                 writer.writerow(data)
     except IOError as (errno, strerror):
             print("I/O error({0}): {1}".format(errno, strerror))    
-    return            
+    return
+
 """
 csv_columns = ['Row','Name','Country']
 dict_data = [
@@ -28,4 +29,3 @@ csv_file = "Names.csv"
 
 WriteDictToCSV(csv_file,csv_columns,dict_data)
 """ 
-

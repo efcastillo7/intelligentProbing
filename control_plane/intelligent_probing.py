@@ -7,7 +7,7 @@ from ryu.controller.ofp_event import EventOFPErrorMsg
 from ryu.lib import hub
 import json
 import sys
-sys.path.insert(0, '/home/efcastillo/ryu/ryu/app/intelligentProbing/database/')
+sys.path.insert(0, '/home/ryu/ryu/ryu/app/intelligentProbing/database/')
 import ConnectionBD_v2
 
 
@@ -31,11 +31,13 @@ class IntelligentProbing(simple_switch_13.SimpleSwitch13):
                 self.logger.debug('unregister datapath: %016x', datapath.id)
                 del self.datapaths[datapath.id]
 
-    def _monitor(self):
+    def _monitor(self):        
         while True:
+            probing_frequency = ConnectionBD_v2.getProbingFrequency()
+            print("PROBING TO...",probing_frequency)    
             for dp in self.datapaths.values():
                 self._request_stats(dp)
-            hub.sleep(5)
+            hub.sleep(probing_frequency)
 
     def _request_stats(self, datapath):
         self.logger.debug('send stats request: %016x', datapath.id)
@@ -48,52 +50,44 @@ class IntelligentProbing(simple_switch_13.SimpleSwitch13):
         req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
         datapath.send_msg(req)
 
+        cookie = cookie_mask = 0
+        match = parser.OFPMatch(in_port=1)
+
+        req = parser.OFPAggregateStatsRequest(datapath, 0,
+                                              ofproto.OFPTT_ALL,
+                                              ofproto.OFPP_ANY,
+                                              ofproto.OFPG_ANY,
+                                              cookie, cookie_mask,
+                                              match)
+        datapath.send_msg(req)
+
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def _flow_stats_reply_handler(self, ev):
         body = ev.msg.body
-
-        self.logger.info('datapath         '
-                         'in-port  eth-dst           '
-                         'out-port packets  bytes')
-        self.logger.info('---------------- '
-                         '-------- ----------------- '
-                         '-------- -------- --------')
+        flow_statistics = {}
+        
         for stat in sorted([flow for flow in body if flow.priority == 1],
                            key=lambda flow: (flow.match['in_port'],
                                              flow.match['eth_dst'])):
-            self.logger.info('%016x %8x %17s %8x %8d %8d',
-                             ev.msg.datapath.id,
-                             stat.match['in_port'], stat.match['eth_dst'],
-                             stat.instructions[0].actions[0].port,
-                             stat.packet_count, stat.byte_count)
-            #self.logger.info('%s', json.dumps(ev.msg.to_jsondict(), ensure_ascii=True,
-             #                     indent=3, sort_keys=True))
-
-        flows = []
-        for stat in ev.msg.body:
-            flows.append('cookie=%d packet_count=%d byte_count=%d '
-                         'match=%s instructions=%s' %
-                         (stat.cookie, stat.packet_count, stat.byte_count,
-                          stat.match, stat.instructions))
-        self.logger.info('FlowStats: %s', flows)     
+            
+            flow_statistics['id_datapath'] = ev.msg.datapath.id
+            flow_statistics['in_port'] = stat.match['in_port']
+            flow_statistics['eth_dst'] = stat.match['eth_dst']
+            flow_statistics['out_port'] = stat.instructions[0].actions[0].port
+            flow_statistics['packets'] = stat.packet_count
+            flow_statistics['bytes'] = stat.byte_count
+            flow_statistics['idle_timeout'] = stat.idle_timeout
+            flow_statistics['hard_timeout'] = stat.hard_timeout
+            flow_statistics['duration_sec'] = stat.duration_sec
+                           
+            #ConnectionBD_v2.insertStatFlow(flow_statistics)
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         body = ev.msg.body
         port_statistics = {}
-
-        self.logger.info('datapath         port     '
-                         'rx-pkts  rx-bytes rx-error '
-                         'tx-pkts  tx-bytes tx-error')
-        self.logger.info('---------------- -------- '
-                         '-------- -------- -------- '
-                         '-------- -------- --------')
-        for stat in sorted(body, key=attrgetter('port_no')):
-            self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
-                             ev.msg.datapath.id, stat.port_no,
-                             stat.rx_packets, stat.rx_bytes, stat.rx_errors,
-                             stat.tx_packets, stat.tx_bytes, stat.tx_errors)
-
+                
+        for stat in sorted(body, key=attrgetter('port_no')):            
             port_statistics['id_datapath'] = ev.msg.datapath.id
             port_statistics['port_number'] = stat.port_no
             port_statistics['rx_packets']  = stat.rx_packets
@@ -103,7 +97,21 @@ class IntelligentProbing(simple_switch_13.SimpleSwitch13):
             port_statistics['tx_bytes']    = stat.tx_bytes
             port_statistics['tx_errors']   = stat.tx_errors
 
-            ConnectionBD_v2.insertStatPort(port_statistics)
+            #ConnectionBD_v2.insertStatPort(port_statistics)
+
+    @set_ev_cls(ofp_event.EventOFPAggregateStatsReply, MAIN_DISPATCHER)
+    def aggregate_stats_reply_handler(self, ev):
+        body = ev.msg.body
+        aggregate_flow_statistics = {}
+
+        aggregate_flow_statistics['byte_count'] =  body.byte_count
+        aggregate_flow_statistics['flow_count'] = body.flow_count
+        aggregate_flow_statistics['packet_count'] = body.packet_count
+
+        if body.flow_count > 0:
+            ConnectionBD_v2.insertStatAggregateFlow(aggregate_flow_statistics)
+
+        #ConnectionBD_v2.insertStatAggregateFlow(aggregate_flow_statistics)
 
 
     @set_ev_cls(EventOFPErrorMsg,
