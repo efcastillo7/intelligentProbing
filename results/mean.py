@@ -34,7 +34,9 @@ f_1  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_
 f_2  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_2s/speed_2.csv")
 f_3  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_3s/speed_3.csv")
 f_4  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_4s/speed_4.csv")
-f_5  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_5s/speed_5.csv")
+
+f_5  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_4s/speed_4.csv")
+
 f_6  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_6s/speed_6.csv")
 f_7  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_7s/speed_7.csv")
 f_10  = ReadCSV("/home/efcastillo/ryu/ryu/app/intelligentProbing/results/probing_10s/speed_10.csv")

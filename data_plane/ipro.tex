@@ -1,0 +1,566 @@
+\begin{abstract}
+Traffic Monitoring assists to ensure the stability of network applications and services by observing and quantifying network behavior. A proper traffic monitoring requires the accurate and timely collection of flow statistics. Many approaches have been proposed to monitor Software-Defined Networks (SDN). However, these approaches have their limitations. First, these approaches are unconcerned about the trade-off between the probing interval and the accuracy of monitoring. Furthermore, few intelligent mechanisms have been proposed to optimize this trade-off by learning from network behavior. This paper introduces Intelligent Probing (IPro) to address these limitations through the Knowledge-Defined Networking (KDN) paradigm. In particular, IPro uses Reinforcement Learning to determine the probing interval that keeps the Control Channel Overhead and CPU Usage within a target value. An extensive quantitative evaluation corroborates that IPro is an efficient solution for Traffic Monitoring in terms of bandwidth consumption of the control channel, CPU Usage of the controller, and monitoring accuracy. \end{abstract}
+
+\begin{keyword}
+    Knowledge-Defined Networking \sep Machine Learning \sep Probing Interval \sep Software-Defined Networking \sep Traffic Monitoring
+\end{keyword}
+
+\end{frontmatter}
+
+\linenumbers
+%############### Introduction
+\section{Introduction}
+\label{sec:introduction}
+The Software-Defined Networking (SDN) is a network paradigm that includes a flexible architecture for fast and easy configuration of network devices \cite{machado_2014:towards_SLA_Policy}. SDN offers fine-grained Network Management (NM) based on decoupling the data and control planes \cite{herrera_2016:nfv_survey,ESTRADASOLANO2017150}. Such decoupling is not enough to guarantee an appropriate network behavior when traffic reach unexpected levels. With this in mind, Traffic Engineering (TE) is an important tool to assist the SDN operation \cite{ian_2014:a_road_map_sdn}. TE encompasses measuring and managing the network traffic, thus contributing to improve the utilization of network resources and to enhance the Quality of Service (QoS). An essential requirement for TE is a reliable Traffic Monitoring, which in turn depends on the accurate and timely collection of flow statistics.
+
+In SDN, switches can measure different per-flow traffic statistics, \textit{e.g.}, byte and packet counters, duration per second, hard timeout, and lifetime. In this sense, OpenFlow \cite{onf_2012:openflow} specifies two approaches involving the SDN controller to retrieve traffic statistics from switches: push-based and pull-based (also referred to as passive and active probing monitoring, respectively). In the push-based approach (\textit{e.g.}, \cite{claise2004:cisco_netflow,phaal2001:inmon_sflow}), the controller passively receives reports from switches, but several factors hamper its applicability. First, some additional requirements are required on both hardware and software (agents) inside switches. Second, when the traffic varies dynamically, switches frequently detect no-matching packets in the flow table and, as a result, massive statistical reports are sent to the controller. This massive reports can cause significant overhead on the control channel \cite{aslan_2016:impact} and, an overload of the controller \cite{su_2014:flowcover}. Third, the push-based approach requires full access to network devices, which could raise privacy and security issues. In the pull-based approach, however, the controller probes one, a set, or all switches using Read-State messages to retrieve flow statistics. Furthermore, this approach provides flexibility, since it can asynchronously communicate with switches to request the specific state information and control the number of statistical reports. In this paper, we focus on the pull-based approach because: (\textit{i}) it allows to gather flow statistics flexibly; and (\textit{ii}) it requires no changes to switches software or hardware. %modifications in switches.
+
+Monitoring traffic overhead can also be introduced in the  pull-based approach because of the probing frequency/interval. This overhead can overload the controller (\textit{i.e.}, increase the CPU Usage) and significantly interfere with essential SDN functions, such as packet forwarding and route updating. Several research efforts have been conducted to deal with the Control Channel Overhead \cite{chowdhury_2014:payless, raumer_2014:monsamp, van_2014:OpenNetMon, tahaei_2017:multi-objective, Tootoonchian_2010:opentm, Sun_2015:HONE, phan2017:sdn_mon, liao_2018:LLDP-looping, jose_2011:online_measurement, tangari_2017:decentralized_monitoring, Tangari_2018:adaptive_decentralized_monitoring, phan2017:adaptive_sdn_mon, tahaei_2018:cost_effective}. In particular, some works \cite{chowdhury_2014:payless, raumer_2014:monsamp, van_2014:OpenNetMon, tahaei_2017:multi-objective, Tootoonchian_2010:opentm} reduce the Control Channel Overhead by using adaptive techniques, wildcards, threshold-based methods, and routing information. Nevertheless, these approaches the accuracy is low. In turn, other research works the monitoring traffic overhead is reduced by adding modules in the switches \cite{Sun_2015:HONE, phan2017:sdn_mon, liao_2018:LLDP-looping} or distributing controllers \cite{jose_2011:online_measurement, tangari_2017:decentralized_monitoring, Tangari_2018:adaptive_decentralized_monitoring, phan2017:adaptive_sdn_mon, tahaei_2018:cost_effective}. 
+this means that in these works, the Control Channel Overhead is reduced at the expense of adding extra resources and consequently, an increase in the costs. In the current pull-based solutions the trade-off between probing interval and the accuracy of monitoring has not been sufficiently studied. Furthermore, very few intelligent mechanisms can be found for optimizing such a trade-off by learning from the network behavior.
+
+%probing interval specifies how often the DP is checked for its health from a Traffic Manager probing agent
+In order to overcome the aforementioned shortcomings, in this paper, we propose an approach called IPro. Our approach is based on the Knowledge-Defined Networking (KDN) \cite{mestres_2017:KDN} paradigm that encourages to apply Machine Learning (ML) techniques in SDN. We argue that using Reinforcement Learning (RL) to optimize the probing interval can keep Control Channel Overhead and CPU Usage within a target value. To test our approach, we implement an IPro prototype and evaluate it in an emulated environment by using a campus network topology.  The evaluation results reveal that IPro keeps the traffic overhead in the control channel less than 1.23\% and the extra CPU Usage of controller less than 8\%. Furthermore, IPro has better accuracy ($\geq$ 90\%) than PPA.
+
+The remainder of this paper is organized as follows. In section II, we present the background and related work. In section III, we introduce our Intelligent probing-based approach. In section IV, we describe and discuss the case study raised to evaluate IPro. Finally, in section V, we provide conclusions and some implications for future work. 
+
+%############### Background and Related Work
+\section{Background and Related Work}
+\label{sec:background_related_work} 
+In this section, we introduce KDN, RL, and Q-learning briefly. We also present the related work about SDN monitoring.
+
+\subsection{Background}
+\label{subsec:background}
+
+\textbf{Knowledge-Defined Networking} encourages the use of ML to change the way the network operators handle, optimize and troubleshoot SDN \cite{mestres_2017:KDN}. In particular, By using ML techniques, it is possible to learn from the network behavior to provide automation (recognize-act) and recommendations (recognize-explain-suggest) that support management and monitoring tasks. In turn, SDN offers full control and a network-wide view from a logically centralized point (\textit{i.e.}, controller). In this paper, we argue that Reinforcement Learning (RL) is an ML technique useful to maintaining the accuracy and decreasing the overhead of monitoring in SDN because it allows optimizing the probing interval by interacting with the network itself (environment).
+
+\textbf{Reinforcement Learning} is a sub-field of machine learning, where an agent learns a decision-making process by interacting with an environment \cite{sutton_1998:rl}. Formally, in RL, the environment is typically modeled as a finite Markov Decision Processes (MDP) \cite{kolobov2012:markov} where the agent sends actions and receives outputs (observations and rewards). In a finite MDP, the agent and environment interact at discrete time steps $t = 0, 1, 2,..., N$. At each time-step $t$, the agent receives some representation of the state of the environment, ${S}_t \in S $, where $S$ is the set of possible states. Based on ${S}_t $, the agent selects an action, ${A}_t \in A(S_t) $, where $ A(S_t) $ is the set of available actions in the state ${S}_t $. The execution of action $A_{t}$ puts the agent into the new state $S_{t+1}$. Furthermore, the agent receives a numerical reward from the environment, $R_{t+1} \in  \mathbb{R}$ at step $t \in N$. Then, the total reward that the agent receives over its lifetime for this particular behavior is:
+
+\begin{equation}
+    \begin{split}
+        U\left ( s \right ) = \sum_{t=0}^{\infty} \gamma^{t}R_{t}
+    \end{split}
+\end{equation}
+
+where $\gamma \in \left ( 0,1 \right ]$ is called the discount factor. If $\gamma < 1$, we say that discounting is used, otherwise no discounting is used. 
+
+RL algorithms find an optimal policy $ \Pi^{*}: S \rightarrow A $ that maximizes the expected cumulative reward for every state, using the exploration methods (\textit{e.g.}, $\varepsilon$-greedy, Boltzmann \cite{sutton_1998:rl} \cite{teng_2012:exploration}). The main RL features are its capacity to run without any prior knowledge of the environment (system) and make its own decisions in execution time (on-line). Nonetheless, it requires a training period to capture the system model before converging to the optimal policy.
+
+\textbf{Q-learning} is one of the most important RL techniques \cite{duryea_2016:exploring_qlearning} because, first, this technique was the pioneering RL method used for control purposes. Second, Q-learning has a learning curve that tends to converge quickly. Third, it is the simplest technique that directly calculates the optimal action policy without an intermediate cost evaluation step and without the use of a model \textit{(i.e.}, Model-free). Fourth, it has an off-policy learning capability; this means, the agent can learn an optimal policy (called Q-function), even if it does not always choose optimal actions. The only condition is that the agent regularly visits and updates all the $(S_t, A_t)$ pairs. It is important to highlight that there are other RL strategies, such as Adaptive Heuristic Critic (AHC), Model-free Learning With Average Reward, and some Q-learning variations \cite{manju_2011:analysis_ql} \cite{kaelbling_1996:reinforcement}. Nonetheless, these strategies have been designed to work in specific environments.
+
+Q-learning \cite{Watkins:1989:q_learning} \cite{farahnakian_2011:q-learning} relies on an optimal action-value function $ Q_{t}(S_t,A_t)$, called Q-function. In this function, the value is the estimated reward of executing an action $A_t$ in the state $S_t$, assuming that the agent will follow the policy that provides the maximum reward. Q-learning starts with an arbitrary Q-function $Q_{0}$. At any state $S_{t}$, an agent selects an action $A_{t}$ that determines the transition to the next state $S_{t+1}$ and with the value associated to the pair ($S_t,A_t$) adjusts the values of Q-function according to:
+
+\begin{equation}
+    \begin{split}
+        Q_{t+1}(S_t,A_t) \leftarrow & (1-\alpha) \cdot Q_{t}(S_t,A_t) + \alpha \cdot \left [R_{t+1} + \gamma \cdot \underset{\rm A}{\rm max} Q_{t}(S_{t+1},A) \right]
+    \end{split}
+    \label{equ:q_function}
+\end{equation}
+
+where $R_{t+1}$ denotes the reward received at time $t+ 1$, $\alpha \in \left [ 0,1 \right ]$ is the learning factor (a small positive number) that determines the importance of the acquired reward. A factor $\alpha = 0$ makes the agent does not learn from the latest ($S_t,A_t$) pair. In turn, a factor $\alpha = 1$ makes the agent considers the immediate rewards without taking into account the future rewards. $\gamma \in \left [ 0,1 \right ]$ is the discount factor that determines the importance of future rewards. A factor $\gamma = 0$ prohibits the agent from acquiring future rewards. A factor $\gamma = 1$ forces the agent only to consider future rewards. The part between square brackets is the updated value and is the difference between the current estimate of the optimal Q-value $Q_t(S_t,A_t)$ for a state-action pair ($  S_{t}, A_{t} $), and the new estimate $ \left [R_{t+1} + \gamma  \underset{\rm A}{\rm max} Q_t(S_{t+1},A) \right ]$. 
+
+The Q-function approximates the optimal state-action value function $ Q^*$, independent of the followed policy. It is noteworthy that the updated Q-function $Q_{t} $ only depends on the previous function $Q_{t-1} $ combined with the experience ($S_{t}, A_{t}, R_{t}, S_{t+1}$). Thus, Q-learning is both computationally and memory efficient. Nonetheless, if the number of states is high, Q-learning may take much time and require more data to converge (i.e., find the best action for each state). Therefore, in Q-learning is critical to have a concise representation of the environment (\textit{e.g.,} the network).
+
+To find the Q-function, Q-learning requires an exploration method. The exploration method selects an action to perform at each step, which represents the Q-function. $\varepsilon$-greedy exploration is one of the most used exploration methods \cite{teng_2012:exploration} \cite{Tijsma_2016:exploration_q_learning}. It uses $\varepsilon \in \left [ 0,1 \right ]$ as the parameter of exploration to decide which action to perform using $Q_{t}(S_{t},A)$. With this parameter the action is as follows:
+
+\begin{equation}
+    \begin{split}
+       \mathcal{A} = \begin{Bmatrix}
+            \underset{\rm A}{\rm max} Q_{t}(S_{t},A) & with \thinspace probability\thinspace 1-\varepsilon \\ 
+            random\thinspace action & with\thinspace probability \thinspace \varepsilon
+        \end{Bmatrix}
+    \end{split}
+    \label{equ:e-greedy}
+\end{equation}
+
+$\varepsilon$-greedy exploration method adds some randomness when deciding between actions: instead of always selecting the best available action, it randomly explores other actions with a probability = $\varepsilon$ or chooses the best action (highest Q-value) with a probability = $1-\varepsilon$. A high value for $\varepsilon$ adds randomness to the exploration method, which will make the agent explores other actions more frequently. Randomness is necessary for an agent to learn the optimal policy.
+
+\subsection{SDN Monitoring}
+\label{subsec:related_work}
+%Considering the importance of 
+Network monitoring is a hot research field that attracts much attention from the academy and industry \cite{feamster_2014:road_sdn,Boutaba2018,8255757}. Table~\ref{tab:comparison_probing} summarizes relevant works in the field of SDN monitoring, revealing several facts. First, several works, such as 
+\cite{Sun_2015:HONE,phan2017:sdn_mon,liao_2018:LLDP-looping,jose_2011:online_measurement,tangari_2017:decentralized_monitoring,Tangari_2018:adaptive_decentralized_monitoring,phan2017:adaptive_sdn_mon,tahaei_2018:cost_effective} minimize network overhead and improve the monitoring accuracy by adding modules in the data plane or distributing controllers.
+%\cite{Sun_2015:HONE}\cite{phan2017:sdn_mon} \cite{liao_2018:LLDP-looping} and \cite{jose_2011:online_measurement} \cite{tangari_2017:decentralized_monitoring} \cite{Tangari_2018:adaptive_decentralized_monitoring} \cite{phan2017:adaptive_sdn_mon} \cite{tahaei_2018:cost_effective}
+As a result, in these works, accuracy is increased at the expense of an increase in network resources and costs. Furthermore, these works do not support fine-grained monitoring and lack of flexibility and scalability needed to cope with a large amount of flows.
+
+Second, other works, such as \cite{chowdhury_2014:payless,raumer_2014:monsamp,van_2014:OpenNetMon, tahaei_2017:multi-objective,Tootoonchian_2010:opentm} use adaptive techniques, wildcards, threshold-based methods, and routing information to increase monitoring accuracy. Nevertheless, in these approaches, a network overhead (\textit{i.e.}, unbalance in the Accuracy/Overhead) is generated. Also, the controller is overloaded while collecting the flow information from switches.
+
+%Nevertheless, the significant contributions offered by works aforementioned, they share some shortcomings. 
+Despite the progress in SDN monitoring, existing approaches still have some drawbacks. First, they introduce overhead that degrades the network performance or require substantial economic investments. Second, the trade-off between probing interval and the accuracy of monitoring has not been considered, thus degrading the control channel or the accuracy of gathered statistics. Third, they do not consider intelligent mechanisms that optimize such a trade-off by learning from the network behavior, causing potential bottlenecks in the control channel, information loss and performance drops. 
+ %These shortcomings raise a research gap located at the intersection between ML and the SDN monitoring. 
+In this paper, these shortcomings are addressed following the KDN paradigm. In particular, RL is used to improve the trade-off between probing interval and monitoring accuracy in SDN.
+ %accuracy in the SDN monitoring.
+
+\fontsize{9}{8}\selectfont
+\begin{center}
+\scriptsize
+\begin{longtable}{P{1.8cm}|P{0.2cm}|P{0.2cm}|P{0.2cm}|P{0.2cm}|P{7.4cm}}
+\caption{Traffic Monitoring in SDN -- H $\rightarrow$ High and L $\rightarrow$ Low} \\
+\hline
+\multicolumn{1}{c|}{\textbf{Work}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Accuracy}}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Overhead}}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Resources-Cost}}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Flexibility-Scalability}}} & \multicolumn{1}{c}{\textbf{\rotatebox[origin=c]{0}{Description}}} \\ 
+\hline 
+\endfirsthead
+
+\multicolumn{6}{c}%
+{{\bfseries \tablename\ \thetable{} -- Continued from previous page}} \\
+\hline 
+\multicolumn{1}{c|}{\textbf{Work}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Accuracy}}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Overhead}}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Resources-Cost}}} & \multicolumn{1}{c|}{\textbf{\rotatebox[origin=c]{90}{Flexibility-Scalability}}} & \multicolumn{1}{c}{\textbf{\rotatebox[origin=c]{0}{Description}}} \\ 
+\hline 
+\endhead
+
+\hline \multicolumn{6}{r}{{Continued on next page}} \\ \hline
+\endfoot
+
+\hline \hline
+\endlastfoot
+
+%###################################### First Stream ###################################################################
+\RaggedRight \cite{chowdhury_2014:payless}  & H & H & L & H & \justifying\noindent{
+%It uses 
+adaptive sampling algorithms 
+\textcolor{red}{are used} to tune the load level imposed by monitoring pŕocess} & \hline
+
+\RaggedRight \cite{raumer_2014:monsamp}  & H & H & L & H & \justifying\noindent{
+%It uses 
+thresholds \textcolor{red}{are used} to adjust the load level imposed by monitoring pŕocess} & \hline
+
+\RaggedRight \cite{van_2014:OpenNetMon}  & H & H & L & H & \justifying\noindent{
+%It uses 
+an adaptive fetching mechanism \textcolor{red}{monitors} 
+%to monitor 
+per-flow metrics such as throughput, delay and packet loss} & \hline
+
+\RaggedRight \cite{tahaei_2017:multi-objective}  & H & H & L & H & \justifying\noindent{
+%It uses 
+an adaptive flow statistical collection \textcolor{red}{is used} with a variable frequency algorithm to adjust the polling frequencies} & \hline
+
+\RaggedRight \cite{Tootoonchian_2010:opentm}  & H & H & L & H & \justifying\noindent{
+%It uses the 
+Routing information 
+%of 
+\textcolor{red}{from}
+the controller and flow forwarding path information \textcolor{red}{are used} %for monitoring 
+\textcolor{red}{to monitor the link utilization}} & \hline
+%###################################### Second Stream ###################################################################
+\RaggedRight \cite{Sun_2015:HONE}  & H & L & H & L & \justifying\noindent{
+%It uses 
+software agents residing on hosts and a module
+%interacting
+\textcolor{red}{interact} with network devices to manage monitoring activities} & \hline
+
+\RaggedRight \cite{jose_2011:online_measurement} & H & L & H & L & \justifying\noindent{
+%It uses 
+a small set of matching rules and secondary controllers 
+\textcolor{red}{ are used} to identify and monitor aggregate flows} & \hline
+
+\RaggedRight \cite{phan2017:sdn_mon} & H & L & H & L & \justifying\noindent{
+%It decouples 
+monitoring \textcolor{red}{is decoupled} from existing forwarding tables and uses customized software agents in the switches to process its monitoring functionality} & \hline
+
+\RaggedRight \cite{liao_2018:LLDP-looping} & H & L & H & L & \justifying\noindent{It injects time-stamped LLDP packets into switches to monitor latency} & \hline
+%###################################### Third Stream ###################################################################
+\RaggedRight \cite{tangari_2017:decentralized_monitoring}& H & L & H & L & \justifying\noindent{
+%It uses 
+local managers and entities 
+\textcolor{red}{ are used} to reconfigure the network resources and support monitoring tasks at different granularity levels} & \hline
+
+\RaggedRight \cite{Tangari_2018:adaptive_decentralized_monitoring} & H & L & H & L & \justifying\noindent{
+%It uses 
+a self-tuning, adaptive monitoring mechanism 
+%that 
+\textcolor{red}{is used to} automatically adjust its settings based on the traffic dynamics} & \hline
+
+\RaggedRight \cite{phan2017:adaptive_sdn_mon} & H & L & H & L & \justifying\noindent{
+%It uses 
+additional modules 
+\textcolor{red}{ are included to} distribute the monitoring entries over switches, select the switches to assign the monitoring tasks in a balanced fashion, and eliminate the duplicate monitoring entries} & \hline
+
+\RaggedRight \cite{tahaei_2018:cost_effective} & H & L & H & L & \justifying\noindent{
+%It uses a hierarchy of controllers at two layers.
+\textcolor{red}{A two layers hierarchy of controllers is described.}
+The lower layer polls the flow statistic and forwards statistics to an upper layer application. The top layer coordinates the controllers of the lower level} 
+\label{tab:comparison_probing} & \hline
+\end{longtable}
+\end{center}
+\normalsize
+
+%############### IPro
+\section{IPro}
+\label{sec:intelligent_probing}
+This section presents a motivating scenario for our approach. Also, this section introduces IPro, its architectural elements, and algorithmic representation.
+
+\subsection{Motivating Scenario}
+\label{subsec:motivating_scenario}
+Let us assume that an infrastructure provider has an OpenFlow-based network and offers services to one or more Internet Services Providers (ISPs) and create particularized slices for each of them that must meet specific Service Level Agreements (SLAs). If a performance degradation occurs in one slice, the services provided by a determined ISP may also be affected, which can lead to non-compliance of the corresponding SLA. In turn, this non-compliance can lead to sanctions for the infrastructure provider.
+%; as a result, the provider may lose money and credibility.
+
+Considering the above-described scenario it is necessary an efficient and reliable traffic monitoring approach that accurate and timely collects the statistics of flows. There are three options to achieve this monitoring. The first one is to use specialized software modules installed into the network devices. Notwithstanding, this option does not support fine-grained monitoring and lacks flexibility and scalability; especially, in networks with a large number of flows \cite{jose_2011:online_measurement}. The second option is to use control messages between switches and the centralized controller when a new flow comes in or upon the expiration of a flow entry. This option is inaccurate under dynamic traffic conditions \cite{megyesi_2017:challenges}. The third option is to use adaptive probing methods, but up to now, they do not offer a trade-off between accuracy and overhead when the network workload is high. In IPro, we offer an adaptive probing that offers such a trade-off by applying RL.
+
+\subsection{Overview}
+\label{subsec:Overview}
+\begin{figure*}[h!]
+    \centering
+    \includegraphics[width=1.0\textwidth]{Fig1-IPro-high-level-operation}
+    \caption{IPro - High level operation}
+    \label{fig:high_level_ipro}
+\end{figure*}
+
+IPro applies RL to optimize the probing interval regarding to the Control Channel Overhead and the CPU Usage of SDN controller. Figure~\ref{fig:high_level_ipro} depicts the high level operation of IPro: \circled{1} the Control Plane (CP) collects statistical information from the Data Plane (DP) at some probing interval. Since this collection of information affects the network behavior, the network falls in a new state. \circled{2} the Management Plane (MP) extracts these statistics to determine such a new state by analyzing the information of Control Channel Overhead and the CPU Usage of the controller. Subsequently, in \circled{3}, MP sends this new state to the Knowledge Plane (KP). In \circled{4}, the RL-agent takes such a state to calculate the reward. It is important to highlight that a low reward indicates high network overhead and high CPU Usage. Based on the reward, the RL-agent decides a new probing interval intended to minimize the Control Channel Overhead and the CPU Usage of the controller. \circled{5} the RL-agent communicates this new probing interval to CP. In \circled{6}, CP applies this interval that affects the network behavior again. This operation continues until the network administrator finishes the IPro execution.
+
+\subsection{Architectural Layers and Elements}
+\label{subsec:detailed_architecture}
+Figure~\ref{fig:detail_ipro} introduces and details the IPro architecture.  IPro has four main planes that follow the KDN fundamentals.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1.0\columnwidth]{Fig2-IPro-architecture}
+    \caption{IPro Architecture}
+    \label{fig:detail_ipro}
+\end{figure}
+
+\paragraph{\textbf{Knowledge Plane}} 
+This plane is responsible for learning the network behavior and automatically deciding a new probing interval. KP obtains the current network status and controls the probing interval by interacting with MP and CP, respectively. The KP heart is the RL-agent. This agent is in charge of determining the most-rewarding probing strategy intended to maintain the Control Channel Overhead and the CPU Usage within target values.
+
+IPro considers two thresholds $\omega$ and $\chi$, which are configurable according to network requirements. $\omega$ aims to prevent the traffic overhead in the control channel (\textit{i.e.,} policy 1). In turn, $\chi$ aims to prevent a high capacity consumption in the controller (\textit{i.e.,} policy 2). To sum up, the RL-agent manages the monitoring policies by controlling $\omega$ and $\chi$.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1.0\columnwidth]{Fig3-IPro-agent}
+    \caption{A general model of the RL-agent}
+    \label{fig:ipro_agent}
+\end{figure}
+
+Figure~\ref{fig:ipro_agent} depicts the RL-agent general model. This model includes three elements, namely, \textit{Sensing}, \textit{Experience Accumulation}, and \textit{Action Selection}. \textit{Sensing} enables the agent to observe the network state and the reward of the IPro monitoring process. The \textit{Experience Accumulation} element guides the policy (i.e., what action to take) of the agent in two steps. In the first one, this element combines the observations made by \textit{Sensing} and define the information matrix that represents the internal states of RL-agent. In the second step, \textit{Experience Accumulation} maps these states and assigns a reward to the associated values that indicate how good or bad these states are, given the experience obtained so far. \textit{Action Selection} uses these values to guide the action policy to take the most-rewarding probing strategy based on the current network state.
+
+\paragraph{\textbf{Control Plane}} 
+This plane is in charge of network monitoring by performing the following two steps. First, CP receives decisions about the new probing interval from KP. Second, CP applies these decisions to collect data from the monitored network. CP includes four elements namely, \textit{Probing Manager, Query Manager, Statistics Module, and Data Repository}. \textit{Probing Manager} sets up the probing interval according to the decision made by the RL-agent. \textit{Query Manager} manages the data collection based on both the given probing interval and the desired aggregation levels (\textit{e.g.}, byte and packet rates, action, duration per second, hard timeout). After this data collection, \textit{Query Manager} merges and stores the statistical information into the data repository, so that it can be accessed later by upper-layer applications. The \textit{Statistics Module} is a service running on the top of the SDN controller, which is useful to develop customized network measurement applications. The \textit{Data Repository} stores statistical information that describes each monitoring operation and maintains a trace of network changes.
+
+It is important to highlight that CP interacts with DP by OpenFlow \cite{onf_2012:openflow} because this protocol has progressively turned in the \textit{de-facto} standard for the southbound interface (SBI) in SDN \cite{nunes_2014:survey_past_present_future}. Also, this plane interacts with KP by a Data Repository Driver.
+
+
+\paragraph{\textbf{Management Plane}} 
+This plane is responsible for extracting the statistical information from CP to provide an analysis of the network state to KP regarding the Control Channel Overhead and the CPU Usage of SDN controller. MP includes two elements called, \textit{Flow Statistics Collection and Data Processing}. The first one extracts the statistical information from the Statistics Module located at CP. The second element is responsible for processing and organizing the information retrieved by Flow Statistics Collection to determine the Control Channel Overhead and the CPU Usage of the controller. \textit{Data Processing} also sends the processed information to the RL-agent located at KP while keeps a historical record of the network state into the data repository.
+
+It is noteworthy that MP interacts with CP by a REST-based interfaces. In turn, MP communicates with KP by specific APIs since, up to now, there are no standardized interfaces for KP.
+
+\paragraph{\textbf{Data Plane}}
+This plane is responsible for forwarding flows in the monitored SDN by network devices decoupled from CP. It is important to mention that in SDN is key performing intelligent management and monitoring decisions by MP, CP, and KP \cite{mestres_2017:KDN}\cite{kreutz_2015:sdn_comprehensive_survey}\cite{isolani_2015:interactive}.
+
+\subsection{Probing Algorithm}
+\label{subsec:ipro_algorithm}
+
+\subsubsection{Assumptions}
+\label{subsec:assumptions}
+
+\textbf{Reward} defines the objective of any RL-agent. In IPro, the reward targets to ensure the accomplishing of network policies regarding both the Control Channel Overhead and the CPU Usage of the controller. For instance, let us assume that our RL-agent chooses an action and increases the probing interval. If IPro does not meet with one or more policies (\textit{e.g.,} policy 1 or policy 2), our RL-agent will learn that it is a wrong action; resulting in a negative reward. Conversely, if IPro meets the policies, our RL-agent will learn that such an increase is a good action; resulting in a positive reward.
+
+One of the main RL challenges is to defining the reward function. In some cases, the choice of this function is easy because it is implicit in the task. For instance,  in an Atari game, there is a score function that is part of the game itself. In other cases, like in IPro, the choice of such function is complex. Our RL-agent has a task objective with multiple criteria, such as keeping the Control Channel Overhead and the CPU Usage within target values to minimize network performance degradation. 
+%How to combine these criteria in a single scalar-valued reward function is a great question to solve.
+%To tackle the question above raised, 
+In our approach, these criteria are combined in a single scalar-valued reward function using the normal distribution defined by Matignon \textit{et al.} \cite{matignon_2006:improving}, whose heuristic allows defining a multi-objective model useful to consider simultaneously the Control Channel Overhead and the CPU Usage (control policies). Therefore, we define the reward function as follows.
+
+\begin{equation}
+    \begin{split}
+       R\left ( S_t, A_t \right ) = \beta_c e^{-\frac{d\left ( C\left ( \Theta  \right ), C\left ( \Theta  \right )* \right )^2}{2\sigma_c^2 }} + \beta_u e^{-\frac{d\left ( Us,Us* \right )^2}{2\sigma_u^2 }}
+    \end{split}
+     \label{equ:reward}
+\end{equation}
+
+where, $\beta$ adjusts the amplitude of the function and $\sigma$, the standard deviation, specifies the reward gradient influence area. $C\left ( \Theta  \right ) $ and $C\left ( \Theta  \right )*$ are the Control Channel Overhead (cf. equation \ref{equ:load}) in states $s$ and $s*$, respectively. $Us$ and $Us*$ are the CPU Usage of the controller in states $s$ and $s*$. $s*$ is the goal state.
+
+\textbf{Space of States} is a signal transferring to the agent some sense of ``how the network is'' at a particular time. We represent the space of states as follows.
+
+\begin{equation}
+   % \begin{split}
+      S\equiv f \left ( i, l, cpu \right )
+%    \end{split}
+    \label{equ:states_model}
+\end{equation}
+
+Each $S_t= \left ( i_t, l_t, cpu_t \right ) \in S$ is characterized by the probing interval $i_t$, Control Channel Overhead $l_t$, and CPU Usage $cpu_t$ in the time $t$. The Control Channel Overhead corresponds to the bandwidth consumed by IPro when transmitting and receiving Read-State messages between CP and DP. The CPU Usage defines the number of instructions carried out in CP because of IPro tasks (\textit{e.g.}, execution, calculation, and comparison of raw data). The probing interval indicates how often CP must send Read-State Request messages to retrieve flow statistics from switches in DP.
+
+\textbf{Statistics Collection.} In SDN, the pull-based monitoring is carried out in the controller that interacts with the switches via a control channel over TCP. There are two main methods to carry out this monitoring \cite{xu_2017:wildcard_requests} \cite{su_2015:cemon}: Per-Flow Collection (PFC) and Per-Switch Collection (PSC). In PFC, the controller sends a request to a switch to collect the traffic statistics of one particular flow. This method generates a high traffic overhead in the control channel when the controller requires to collect statistics of many flows. This overhead is due to the large quantity of Read-State Request messages sent for each switch. In PSC, the controller sends a request to collect the traffic statistics of all flow entries from a switch. This method reduces the number of Read-State Reply messages (Controller$<->$Switch) and, so, reduces the Control Channel Overhead and CPU Usage. Nonetheless, if PSC is used excessively with, for instance, a low probing interval (high frequency), it can cause flow statistics overlapping, overload the controller, and also high traffic in the control channel. In IPro, we use PSC because it allows tuning the probing interval to handle the Control Channel Overhead and the CPU Usage of the controller efficiently.
+
+\textbf{SDN Model} consists of a logically-centralized controller (may be a cluster of distributed controllers \cite{jose_2011:online_measurement} \cite{tahaei_2018:distributed_controller}) and a set of switches. We model the SDN by an undirected graph $G=(V,E)$, where $V=\left \{ v_1,..., v_n \right \}$ is the set of nodes (switches and controllers) and $E=\left \{ e_1,..., e_u \right \}$ is the set of links connecting nodes. Assume that the controller knows the existing active flows in the network, denoted by $\Theta = \left \{ \theta_1, \theta_2, ..., \theta_m \right \} $, with $m=\left | \Theta  \right |$. Thus, it is reasonable to assume that the controller also knows each flow that passes through each switch $v_i$, denoted by $\theta_i$, with $i=1,2,...,m$. Therefore, the active flows number in switch $v_i$ is $\left | \theta_i  \right |$.
+
+\textbf{Control Channel Overhead} is the bandwidth cost used for statistics collection of a flows set from the switches. In IPro, the controller generates this cost when requests and receives to and from the switches the statistics of a flows set $\theta_i$. According to \cite{onf_2012:openflow}\cite{su_2015:cemon}, the bandwidth cost caused by $\theta_i$ involves two parts: (\textit{i}) the size of the Read-State Request messages $l_{rq}$ sent to switches; and (\textit{ii}) the size of the Read-State Reply messages  $l_{rp}$, which depends on the number of existing flows $\left | \theta_i  \right |$ in the flow tables. Thus, the bandwidth cost is as follows.
+
+\begin{equation}
+    \begin{split}
+        C\left ( \Theta  \right ) = l_{rq} \cdot \left | V \right | + l_{rp} \cdot \sum_{i=1}^{\left | V \right |} \left | \theta_i \right |, \forall i \leqslant \left | V \right |
+    \end{split}
+     \label{equ:load}
+\end{equation}
+
+\textbf{CPU Usage} is the number of instructions generated by execution, calculation, and comparison of raw data in IPro. According to \cite{tahaei_2018:distributed_controller}, 
+%a straightforward criterion to observe the CPU Usage of the controller is to assume a constant $x$ 
+CPU Usage of the controller can be estimated through a constant ($x$) that indicates the number of instructions taken by CPU to fragment the Read-State Reply messages. Therefore, the CPU Usage for analyzing $n$ specific flows from $\Theta$ is modeled as a linear function of $n$.
+
+\begin{equation}
+    \begin{split}
+        CPU \cong \left | V \right |* n\left ( ReadStateReply \right ) * x,  \forall n \in \Theta
+    \end{split}
+     \label{equ:load_cpu}
+\end{equation}
+
+\subsubsection{Algorithm Operation}
+\label{subsec:assumptions}
+Algorithm 1 presents the probing interval optimization procedure carried out by IPro. The algorithm inputs are the learning factor $\alpha$, the discount factor $\gamma$ (\textit{cf.} Equation~\ref{equ:q_function}), and the exploration method $\varepsilon$ (cf. Equation~\ref{equ:e-greedy}). The output is the most-rewarding probing interval according to the current network status. 
+
+The probing algorithm has two considerations, it assumes a null initial condition of the $Q(\mathcal{S},\mathcal{A})$ before the first update occurs (line 1). Furthermore, it starts its execution from a random state that represents the initial values of probing interval, Control Channel Overhead, and CPU Usage (line 3). After these considerations, the probing interval optimization process begins (line 4). In this process, the RL-agent discovers the reward structure and determines the most-rewarding probing interval by interacting with the network. The proposed algorithm performs the following steps in each iteration:
+
+\newlength{\commentWidth}
+\setlength{\commentWidth}{7cm}
+\newcommand{\atcp}[1]{\tcp*[r]{\makebox[\commentWidth]{#1\hfill}}}
+\begin{algorithm}
+\footnotesize
+\SetAlgoLined
+\SetKwInOut{Input}{Require}
+\SetKwInOut{Output}{Output}
+
+\Input{
+    \\
+    %States $\mathcal{S} = \{1, \dots, n_s\}$ \\
+    %Actions $\mathcal{A} = \{1, \dots, n_a\},\qquad A: \mathcal{S} \Rightarrow \mathcal{A}$ \\
+    %Actions $\mathcal{A} = \{up, down, equal\},\qquad A: \mathcal{S} \Rightarrow \mathcal{A}$ \\
+    %Reward function $R: \mathcal{S} \times \mathcal{A} \rightarrow \mathbb{R}$ \\
+    Exploration parameter  $\varepsilon$ \\
+    %Transition function ($\epsilon$) $T: \mathcal{S} \times \mathcal{A} \rightarrow \mathcal{S}$ \\
+    Discount factor $\gamma$ \\
+    Learning factor $\alpha$ \\
+    %Reward function $R: (S,A) \rightarrow R $
+}
+\KwResult{A probing interval}
+
+%Initialize $Current Bandwidth$ $CB$\;
+%Calculate current traffic according to Control and Monitoring messages $CM$ \;
+%\If{$ CM > CB * 0.8 $}{
+\BlankLine
+Initialize $Q:$ $Q(\mathcal{S},\mathcal{A})=0, \forall s \in \mathcal{S}, \forall a \in \mathcal{A}$
+\BlankLine
+    \While{not reached stopping criterion}{
+      Start in state $S_{t} \in \mathcal{S}$\;
+      %Choose A from $S_{t}$ using policy derived from $\underset{\rm A}{\rm max} Q_{t}(S_{t},A)$\;
+        \While{$S_{t}$ is not terminal}{
+            Select $A_{t}$ from $S_{t}$ using policy derived from Q using $\varepsilon$-greedy exploration method\;
+            %Calculate $\pi$ according to Q \;
+            %Exploration strategy (e.g. $\pi(x) \gets \argmax_{a} Q(s, a)$)\;
+            $A_{t} \gets \pi(S_{t})$ \tcp*[h]{Execute probing action}\;
+            Modify the probing interval according to the action $A_{t}$\;
+            $S_{t+1} \gets T(S_{t}, A_{t})$ \tcp*[h]{Receive the new state}\;
+            $R_{t+1} \gets R(S_{t}, A_{t})$ \tcp*[h]{Calculate reward}\;
+            $Q_{t+1}(S_t,A_t) \leftarrow & (1-\alpha) \cdot Q_{t}(S_t,A_t) +
+             &\alpha \cdot \left [R_{t+1} + \gamma \cdot \underset{\rm A}{\rm max} Q_{t}(S_{t+1},A) \right]$\tcp*[h]{Update Q-function}\;
+            %Modify the probing interval according to the action $A_{t}$\;
+            Send the probing interval modified to Data Repository\;
+            $S_{t} \gets S_{t+1}$ \tcp*[h]{Move to the new state}\;
+            $t \gets t+1$  \tcp*[h]{Increment and set the number of steps taken}\;
+        }
+    }
+%}
+%\Return $Q$
+%\caption{$Q$-learning: Learn Function $Q: \mathcal{S} \times \mathcal{A} \rightarrow \mathbb{R}$}
+\label{alg:ipro_algorithm}
+\caption{Probing Interval Optimization}
+\end{algorithm}
+%\bigskip % add 12pt space in-between
+
+\begin{itemize}
+    \item The RL-agent selects a probing action $A_{t}= \{up, down, equal\}$ from the Q-function using $\varepsilon$-greedy exploration method that modifies the probing interval (line 7). The possible actions are to increase ($up$), reduce ($down$), or keep ($equal$) the probing interval.
+    \item The RL-agent executes the probing action selected in the previous step (line 6). Since this execution affects the network behavior, the network falls in a new state. MP determines the new state by Equation~\ref{equ:states_model}, where the Control Channel Overhead and CPU Usage are determined using the Equation~\ref{equ:load} and Equation~\ref{equ:load_cpu}, respectively. The value of the probing interval is the obtained in the step 1. Subsequently, MP sends this new state to RL-agent.
+    \item The RL-agent receives the new network state from MP (line 8). 
+    \item The RL-agent takes such a state to calculate the reward (line 9). In particular, the reward is computed by Equation~\ref{equ:reward}.
+    \item Based on the learning factor, discount factor, initial considerations, reward, and new network state, the RL-agent adjusts the values of the Q-function according to Equation~\ref{equ:q_function} (line 10).
+    \item The RL-agent sends the probing interval to Data Repository (line 11).
+    \item The RL-agent moves to the new state (line 12) and moves on to the next iteration $t+1$ (line 13).
+\end{itemize}
+
+The probing interval optimization process is repeated until the agent perceives that the policy does not change. At this moment, the agent gets the most-rewarding probing interval that keeps Control Channel Overhead and CPU Usage within target values aiming at minimizing network performance degradation caused by the IPro monitoring tasks.
+
+\section{Evaluation}
+\label{sec:experimental_evaluation}
+To assess our approach, first, we built a test environment, including the SDN to monitor. Second, we developed an IPro prototype. Third, we conducted experiments to measure the traffic overhead in the control channel, the CPU Usage of controller, and the monitoring accuracy of the prototype built. 
+
+\subsection{Setup}
+\subsubsection{Test Environment}
+\label{subsec:setup}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.925\columnwidth]{Fig4-topology}
+    \caption{Test environment}
+    \label{fig:campus_topo}
+\end{figure}
+
+Figure~\ref{fig:campus_topo} presents the test environment that we used to evaluate IPro. This environment includes the campus network topology of the Federal University of Rio Grande do Sul \cite{isolani_2015:interactive}, the Ryu Controller, and the IPro prototype (\textit{cf.} Section ~\ref{subsec:prototype}). The monitored topology includes $13$ OpenFlow (version 1.3) switches that connect (via 10Mbps links) $112$ hosts from $6$ laboratories (each one with 16 hosts) and $2$ administration offices (each one with $8$ hosts), one Web Server, and one File Server.  We used Mininet emulator to deploy the above topology \cite{lantz_2010:mininet}, which run on a Ubuntu server with an Intel i7-4770 2.26 GHz and 8GB RAM. We used a Ubuntu server with a core i7-4770 processor and 2GB RAM to run the Ryu Controller.
+
+In all experiments, we used video and HTTP traffic in a proportion of $75\%$ and $25\%$, respectively. We generated such traffic by Iperf (v2.0.5). Furthermore, all experiment results have a confidence level equal to or higher than 95\%. 
+
+\subsubsection{Prototype}
+\label{subsec:prototype}
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.5]{Fig5-IPro-prototype}
+    \caption{IPro - Prototype implementation}
+    \label{fig:prototype_ipro}
+\end{figure}
+
+Figure~\ref{fig:prototype_ipro} depicts the IPro prototype including: the RL-agent, Data Processing, Flow Statistics Collection, Data Repository, Probing Manager, Query Manager, and Statistics Module. The Agent and Data Processing were developed and deployed using version 1.15 of Numpy that is the fundamental Pyhton package for scientific computing. The Probing Manager, Query Manager, and Statistics Module were developed using the REST-based API provided by Ryu. This API helps to retrieve the switch statistics (\textit{e.g.}, data traffic counters, ports, and flows). The Flow Statistics Collection was developed using the Ryu API. The Data Repository was developed as a MySQL database.
+
+\subsubsection{Space of States}
+\label{subsubsec:space_states}
+To determine the space of states (\textit{cf}. Equation~\ref{equ:states_model}), we estimated and experimentally measured the Control Channel Overhead (\textit{cf}. Equation~\ref{equ:load}) and the CPU Usage of the controller (\textit{cf}. Equation~\ref{equ:load_cpu}) when the probing interval varies. We manually tested the probing intervals range between 1 and 15 seconds (in steps of 1 second). For each interval, the test duration was 600 seconds. Furthermore, we assess the monitoring accuracy in each interval to corroborate how good is the data collection.
+
+\paragraph{\textbf{Control Channel Overhead}}
+Figure~\ref{fig:control_channel_load_behavior} presents the evaluation results of Control Channel Overhead, disclosing that if we monitor the network with a probing interval upper or equal than 5 seconds, the overhead is lower than 12\%. When this interval is smaller than 5 seconds the overhead increases (top than 20\%) due to the big size and quantity of Read-State (Request-Reply) messages (cf. Equation~\ref{equ:load}). These results corroborate that the probing interval affects significantly the Control Channel Overhead.
+
+\begin{figure*}[h!]
+    \centering
+    \includesvg[width=1.0\textwidth]{Fig7-control-channel-behavior}
+    \caption{Control Channel Overhead}
+    \label{fig:control_channel_load_behavior}
+\end{figure*}
+
+\paragraph{\textbf{CPU Usage}}
+Figure~\ref{fig:cpu_behavior} depicts the impact of the probing intervals on the CPU Usage of the controller. It is noteworthy if we monitor the network with a probing interval upper or equal than 5 seconds, the CPU Usage increases 8.5\% on average approximately. Nevertheless, when this interval is smaller than 5 seconds the CPU Usage increases (top than 20.5\%) because the controller collects statistics information more frequently. As a consequence, the controller CPU must process a higher amount of instructions per second for fragmentation and reading of the Read-State messages. These results corroborate that the probing interval affects significantly the CPU Usage.
+
+\begin{figure}[h!]
+    \centering
+    \includesvg[width=1.0\columnwidth]{Fig6-cpu-usage}
+    \caption{CPU Usage of the controller}
+    \label{fig:cpu_behavior}
+\end{figure}
+
+\paragraph{\textbf{Accuracy}}
+To assess the monitoring accuracy, we measure the throughput in each probing interval. Figure~\ref{fig:throughput} depicts the assessment results, disclosing that the accuracy in the throughput measurement is higher than 80\% when the probing interval varies between 4 seconds and 6 seconds. In particular, the interval of 5 seconds reports the highest accuracy (88.83\%). In turn, the intervals of 6 seconds and 4 seconds achieve an accuracy of 86.06\% and 83.83\%, respectively. Nonetheless, for the other probing intervals, the accuracy is reduced considerably. For instance, the interval of 7 seconds accomplishes an accuracy lower than 69.93\%. These results corroborate that the probing interval affects significantly the monitoring accuracy.
+
+\begin{figure}[h!]
+    \centering
+    \includesvg[width=1.0\columnwidth]{Fig9-throughput}
+    \caption{Accuracy in the measurement of throughput }
+    \label{fig:throughput}
+\end{figure}
+
+\paragraph{\textbf{Spaces discretization}}
+Since IPro is RL-based, it models its environment as a finite MDP. In order to get a finite space of states, we perform the discretization of the Control Channel Overhead and the CPU Usage by using the results of the previous experiment.
+
+\begin{comment}
+\begin{figure}[h!]
+    \centering
+    \includesvg[width=1.0\columnwidth]{Fig8-latency-jitter}
+    \caption{Latency and Jitter}
+    \label{fig:delay_jitter}
+\end{figure}
+\end{comment}
+
+We perform the discretization by: (\textit{i}) representing the values of both Control Channel Overhead and CPU Usage in the interval $\left [ 0,1 \right ]$, where 0 represents 0\% and 1 represents 100\%, (\textit{ii}) configuring the control policy $\chi$ in 80\% aiming at preventing response times of controller upper than 1 millisecond \cite{repas_2015:performance_cpu}; and (\textit{iii}) configuring the control policy $\omega$ in 80\% intending to avoid interference with essential SDN functions (\textit{e.g.}, packet forwarding and route updating) and the reduction of network performance \cite{xu_2017:wildcard_requests}. The components of space of states are:
+
+\begin{itemize}
+    \item Control Channel Overhead:\\ $ l =\left \{ \left [ 0,0.4 \right ), \left [ 0.4,0.5 \right ), \left [ 0.5,0.6 \right ), \left [ 0.6,0.7 \right ) ,\left [ 0.7,0.8 \right )\right \}$.
+    \item CPU Usage:\\ $cpu=\left \{ \left [ 0,0.4 \right ),\left [ 0.4,0.5 \right ),\left [ 0.5,0.6 \right ),\left [ 0.6,0.7 \right ),\left [ 0.7,0.8 \right ) \right \}$.
+    \item Probing Interval:\\ $i = \left \{\left [ 4,10 \right ] \right \}$.
+\end{itemize}
+
+It is important to highlight that both Control Channel Overhead and the CPU Usage can be divided into smaller sub-intervals to facilitate the RL-agent decision making. However, smaller intervals increase the size of the space of states and, so, slow down the learning process convergence rate. Considering the above components, the discretized space of states is presented in the next Equation.
+
+\begin{equation}
+    \begin{split}
+      S\equiv f\left ( i, l, cpu \right ): & i\in \left [ 4,10 \right ], l=\left \{ 0,0.4,0.5,0.6,0.7,0.8 \right \},\\ 
+      & cpu=\left \{ 0,0.4,0.5,0.6,0.7,0.8 \right \} 
+    \end{split}
+    \label{equ:states}
+\end{equation}
+
+\subsection{Intelligent Probing Behavior}
+\label{subsec:ipro_behavior}
+To check the feasibility of using IPro, we simulate its use (\textit{cf}. Algorithm 1) in the test environment described in Section~\ref{subsec:setup} for 600 seconds. Figure~\ref{fig:load_behavior} depicts the simulation results, disclosing that in the first 238 seconds of the simulation, both the Control Channel and the CPU Usage present a highly fluctuating behavior. This behavior is because the RL-agent does not have a previous knowledge (\textit{i.e.}, at this moment the Q-function is empty); therefore, it begins the exploration process to determine the effect of each action on the network status (\textit{i.e.}, learning process). As the learning process progresses, the RL-agent visits each state of space of states (\textit{cf.} Equation~\ref{equ:states}) multiple times to find the most-rewarding probing strategy that minimizes network performance degradation (\textit{i.e.}, convergence of the learning process).
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1.0\textwidth]{Fig10-IPro-behavior}
+    \caption{Behavior of the control channel and the CPU}
+    \label{fig:load_behavior}
+\end{figure}
+
+When the learning process tends to converge, the fluctuations of Control Channel Overhead and CPU Usage dwindles to a smaller radius (after 238 seconds approximately). This convergence is because we choose a normal distribution function (cf. Equation \ref{equ:reward}), where IPro gradually moves to states adjacent to the target state (\textit{i.e.}, calibrates the action-value function).
+
+%Eventually, the RL-agent increases the Control Channel Overhead and CPU Usage less than 1.23\% and 8\%, respectively. Furthermore, it provides a high monitoring accuracy (90.11\%). These results are presented in greater detail in Table~\ref{tab:results_comparison}.
+
+We must emphasize that the exploration exists throughout the simulation, but the exploration radius diminishes as the learning process converges. Nevertheless, in real-world networks, the environment may always be changing and evolving, requiring that IPro never stop its learning, because there might not exist an absolute answer.
+
+\begin{comment}
+\begin{figure}[!htp]%t!
+    \centering
+    \includesvg[width=1.0\columnwidth]{figures/Fig_07_cpu_behavior}
+    \caption{CPU Usage behavior}
+    \label{fig:cpu_behavior}
+\end{figure}
+\end{comment}
+
+\subsection{Comparison}
+\label{subsec:ipro_performance}
+Here, we compare the Control Channel Overhead, CPU Usage, and the accuracy of IPro regarding Periodic Probing Approach (PPA). It is important to highlight that PPA probes the switches with a pre-defined fixed probing interval. For this comparison, we established the probing interval between 1 and 15 seconds. However, we limit our analysis to the probing intervals whose accuracy in the throughput measurement is higher than 80\% (\textit{i.e.}, intervals 4s, 5s, and 6s). We justify this limit because one of the pillars of the traffic monitoring is to provide high accuracy in the collection of flow statistics.
+
+\fontsize{7}{8}\selectfont
+{\renewcommand{\arraystretch}{1.4}
+\begin{table*}[!htp]
+\scriptsize
+\begin{center}
+\footnotesize
+%\rowcolors{1}{lightgray}{white}
+\begin{tabularx}{\linewidth}{P{2.95cm}P{2.5cm}P{2.5cm}P{2.5cm}}
+\hline
+\textbf{\rotatebox[origin=c]{0}{Probing  Interval [s] }}&\textbf{\rotatebox[origin=c]{0}{Accuracy [\%]}}&\textbf{\rotatebox[origin=c]{0}{CPU Usage[\%]}}&\textbf{\rotatebox[origin=c]{0}{Overhead[\%]}}\\\hline
+
+\rowcolor{gray!20} IPro  &  90.11 &  7.40 & 1.23  \\\hline
+PPA with 1     &  55.43 &  38.30 & 62.30  \\\hline
+PPA with 2     &  54.04 &  32.40 & 56.00  \\\hline
+PPA with 3     &  60.21 &  20.70 & 22.30  \\\hline
+PPA with 4     &  83.83 &  15.10 & 17.40  \\\hline
+PPA with 5     &  88.83 &  12.30 & 11.45  \\\hline
+PPA with 6     &  86.06 &  10.10 & 11.33  \\\hline
+PPA with 7     &  68.94 &  8.20  & 9.70   \\\hline
+PPA with 8     &  63.94 &  8.70  & 8.70   \\\hline
+PPA with 9     &  65.85 &  8.70  & 8.10   \\\hline
+PPA with 10    &  57.55 &  5.90  & 11.00  \\\hline
+PPA with 11    &  61.91 &  8.10  & 7.30   \\\hline
+PPA with 12    &  64.04 &  8.60  & 6.00   \\\hline
+PPA with 13    &  65.11 &  7.70  & 6.20   \\\hline
+PPA with 14    &  62.34 &  7.10  & 5.30   \\\hline
+PPA with 15    &  52.02 &  6.10  & 3.50   \\\hline
+\end{tabularx}
+\caption{Comparison table}
+\label{tab:results_comparison}
+\end{center}
+\end{table*}
+}
+\normalsize
+
+The experimental results (\textit{cf.} Table~\ref{tab:results_comparison}) reveal that our approach first, it can significantly reduce the Control Channel Overhead compared  \textcolor{red}{to}
+%regarding 
+PPA (using probing intervals 4s, 5s, and 6s) in 16.17\%, 10.22\%, and 10.1\%, respectively. Second, IPro minimizes the number of messages sent to the controller, which implies a reduction of CPU Usage of the controller of the 7.7\% - 4.9\% - 2.7\%. That is because, at each time step, IPro uses the network state for improving its control policies, and next, taking the best action based on that improved policy, which leads to better use of the control channel and the CPU Usage of the controller. Furthermore, compared with PPA, IPro achieves a higher monitoring accuracy (90.11\%). In summary, IPro obtains a significantly reduced network overhead without compromising measurement accuracy and CPU Usage of the controller.
+
+
+\section{Conclusions and Future Work}
+\textcolor{blue}{In this paper, we investigated the viability of using KDN as a practical approach to network traffic monitoring. The more significant contributions achieved by such investigation are: First, the IPro architecture that presented a way to monitor SDN-based networks intelligently. Second, the use of the KDN concept that introduced how to use Reinforcement Learning to determine the probing interval that keeps the Control Channel Overhead and CPU Usage of the controller within a target value. Third, the mechanism that modifies the probing interval based on the network traffic variations. Fourth, the representation of a space of states that describes the behavior of the network according to the change of the Control Channel and the controller when the probing interval varies. Lastly, the architecture that supported the proposed approach as a whole.}
+
+\textcolor{blue}{We also presented a prototype that carried out our approach and its evaluation in an SDN-based emulated scenario. In this scenario, we proposed a campus network topology and generate network traffic as video and HTTP. Considering the evaluation results, we can state about our approach: (i) it keeps the Control Channel Overhead less than 1.23\%, (ii) it increases the CPU Usage of controller less than 8\%; and (iii) it has good behavior in terms of monitoring accuracy because it achieves a higher monitoring accuracy (90.11\%) regarding to PPA.}
+
+%Current SDN Traffic Monitoring solutions present shortcomings related to the unconcern about the trade-off between probing interval and the accuracy of monitoring and lack of intelligent mechanisms that optimize such a trade-off by learning from the network behavior. This paper introduced IPro, based on KDN, to address these shortcomings. In particular, IPro used Reinforcement Learning to determine the probing interval that keeps the Control Channel Overhead and CPU Usage within a target. The IPro evaluation corroborated that it keeps the Control Channel Overhead less than 1.23\% and it increases the CPU Usage of controller less than 8\%. \textcolor{red}{Furthermore, IPro achieved 90\% accuracy outperforming PPA}.
+
+%has an accuracy higher than 90\%, which is better than the PPA accuracy.
+
+\textcolor{blue}{Our approach has a particular shortcoming; it requires a considerable time for the learning process to converge to the target state (approximately 238 seconds). Nonetheless,  we believe that a robust model-free approach (e.g., Double Q-learning, Deep Q-Learning, Q-learning with Experience Replay, and Multi Q-learning) or a model-based approach (e.g., Deep Reinforcement Learning) may be essential to attack these shortcomings.}
+
+As future work, we plan to correlate Control Channel Overhead, CPU Usage, and monitoring accuracy, to define a multi-objective model useful to find a trade-off between probing interval, overhead, and the accuracy of monitoring. Furthermore, we intend to use diverse Reinforcement Learning or Deep Reinforcement Learning algorithms in the IPro implementation to evaluate its behavior. Finally, we also want to experiment with different reward functions in conjunction with other parameters, such as computational resources of switches, to improve the probing interval estimation.
+
+
+%\textcolor{red}{please include the drawbacks of the present approach and the landscape of possibilities open, such as the fact that IPRO could be improved with the works in commnets((2019). Learning-based network path planning for traffic engineering),(2018). Deep Reinforcement Learning for Multimedia Traffic Control in Software Defined Networking,(2018). A Novel Non-Supervised Deep-Learning-Based Network Traffic Control Method for Software Defined Wireless Networks}
+%%Zuo, Y., Wu, Y., Min, G., & Cui, L. (2019). Learning-based network path planning for traffic engineering. Future Generation Computer Systems, 92, 59-67.}
+%%Huang, X., Yuan, T., Qiao, G., Ren, Y. (2018). Deep Reinforcement Learning for Multimedia Traffic Control in Software Defined Networking. IEEE Network, 32(6), 35-41.
+
+%%Mao, B., Tang, F., Fadlullah, Z. M., Kato, N., Akashi, O., Inoue, T., & Mizutani, K. (2018). A Novel Non-Supervised Deep-Learning-Based Network Traffic Control Method for Software Defined Wireless Networks. IEEE Wireless Communications, 25(4), 74-81.
+
+\section*{References}
+\bibliography{refs}
+
+\end{document}
