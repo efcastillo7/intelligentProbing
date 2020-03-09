@@ -6,22 +6,24 @@ import sys
 sys.path.insert(0, '/home/ryu/ryu/ryu/app/intelligentProbing/database/')
 import ConnectionBD_v2
 
+from simulator import Simulator
+
 class TrafficLight(object):
     """
-    A traffic light that switches state periodically.
+    A network that switches state periodically.
     """
-    
+
     valid_states = [True, False]  # True = NS open, False = EW open
-    
+
     def __init__(self, state=None, period=None):
         self.state = state if state is not None else random.choice(self.valid_states)
         ## The random period of being in one state {NS, EW}
         self.period = period if period is not None else random.choice([3, 4, 5])
         self.last_updated = 0
-    
+
     def reset(self):
         self.last_updated = 0
-    
+
     def update(self, t):
         '''
         Switches the state {NS, EW} of the traffic light.
@@ -29,15 +31,15 @@ class TrafficLight(object):
         if t - self.last_updated >= self.period:
             self.state = not self.state  # assuming state is boolean
             self.last_updated = t
-            
+
 class Environment(object):
     """
     An environment in which the agent interact with.
     """
     #None = 'equal'
-    valid_actions = [None, 'forward', 'left', 'right']
+    valid_actions = ['equal', 'left', 'right']
     valid_headings = [(1, 0), (0, -1), (-1, 0), (0, 1)]  # East, North, West, South
-        
+
     def __init__(self, fw=None, progress=None):
         self.done = False
         self.t = 0
@@ -51,15 +53,15 @@ class Environment(object):
 
         self.progress = progress  # the progress bar
         self.success_trials = []
-                         
+
         # Primary agent
         self.primary_agent = None  # to be set explicitly
         self.enforce_deadline = False
 
         # Reward Parameter
-        self.goal_load = 700
-        self.goal_cpu = 40  
-        self.sigma = 7  #standard deviation
+        self.goal_load = 1600
+        self.goal_cpu = 50
+        self.sigma = 9  #standard deviation
 
         # Road network
         self.grid_size = (6, 5)  # (cols, rows)
@@ -72,11 +74,15 @@ class Environment(object):
         self.current_network_state = {}
         self.current_value_network_state = {}
 
+        # Monitoring Intervals
+        self.upper_interval = 10
+        self.lower_interval = 3
+
         ## Put a traffic light at each intersection
         for x in xrange(self.bounds[0], self.bounds[2] + 1):
             for y in xrange(self.bounds[1], self.bounds[3] + 1):
                 self.intersections[(x, y)] = TrafficLight()  # a traffic light at each intersectio
-        
+
         ## Set equal length (1) for all segments
         for a in self.intersections:
             for b in self.intersections:
@@ -84,55 +90,52 @@ class Environment(object):
                     continue
                 if (abs(a[0] - b[0]) + abs(a[1] - b[1])) == 1:  # L1 distance = 1
                     self.roads.append((a, b))
-        
+
         # Set probing frequencies
         for k in xrange(1,self.grid_size[0]* self.grid_size[1] + 1):
             self.probing_frequencies.append(float(k))
-        # Primary agent
-        self.primary_agent = None  # to be set explicitly
-        self.enforce_deadline = False
 
     def set_cumulative_reward(self, cumulative_reward=0):
         self.cumulative_reward = cumulative_reward
-    
+
     def set_trial_number(self, trial=0):
         self.trial = trial
         if self.progress is not None:
             self.progress.update(trial-1)
-    
+
     def get_success_trials(self):
         return self.success_trials
-    
+
     def get_cumulative_rewards(self):
-        return self.cumulative_rewards    
+        return self.cumulative_rewards
 
     def create_agent(self, agent_class, *args, **kwargs):
         agent = agent_class(self, *args, **kwargs)
         ## All agents initially head South?
         self.agent_states[agent] = {'location': random.choice(self.intersections.keys()), 'heading': (0, 1)}
-        print("Created agent", self.agent_states[agent])
+        #print("Created agent", self.agent_states[agent])
         return agent
 
     def set_primary_agent(self, agent, enforce_deadline=False):
         self.primary_agent = agent
         self.enforce_deadline = enforce_deadline
-    
+
     def set_probing_frequency(self,probing_frequency):
         self.probing_frequency = probing_frequency
-        
+
     def set_current_network_state(self,current_network_state):
         self.current_network_state = current_network_state
 
     def set_value_current_network_state(self,current_value_network_state):
-        self.current_value_network_state = current_value_network_state    
-    
+        self.current_value_network_state = current_value_network_state
+
     def reset(self):
         self.done = False
         self.t = 0
         # Pick random start (origin) and destination
         start = random.choice(self.intersections.keys())
         destination = random.choice(self.intersections.keys())
-        
+
         # Ensure starting location and destination are not too close
         while self.compute_dist(start, destination) < 4:
             start = random.choice(self.intersections.keys())
@@ -151,11 +154,11 @@ class Environment(object):
                 'destination': destination if agent is self.primary_agent else None,
                 'deadline': deadline if agent is self.primary_agent else None}
             agent.reset(destination=(destination if agent is self.primary_agent else None))
-        
+
     def compute_dist(self, a, b):
         """L1 distance between two points."""
         return abs(b[0] - a[0]) + abs(b[1] - a[1])
-        
+
     def step(self):
         '''
         Update the agents' observations (states)
@@ -164,7 +167,7 @@ class Environment(object):
 
         for intersection, traffic_light in self.intersections.iteritems():
             traffic_light.update(self.t)
-        
+
         for agent in self.agent_states.iterkeys():
             agent.update(self.t)
         #print(self.probing_frequency)
@@ -181,8 +184,8 @@ class Environment(object):
                 self.success_trials.append(False)
                 self.cumulative_rewards.append(self.cumulative_reward)
             self.agent_states[self.primary_agent]['deadline'] -= 1  # decrement the deadline of primary agent
-            print("Agent Step", self.agent_states[self.primary_agent])
-    
+            #print("Agent Step", self.agent_states[self.primary_agent])
+
     def sense(self, agent):
         '''
             We get the state of control channel and cpu usage
@@ -191,20 +194,26 @@ class Environment(object):
         assert agent in self.agent_states, "Unknown agent!"
         state = self.agent_states[agent]
 
-        
+
         return self.current_network_state
-    
+
     def get_deadline(self, agent):
         return self.agent_states[agent]['deadline'] if agent is self.primary_agent else None
 
     def gaussian(self, x, mu, sig):
         return round(np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.))),3)
-    
+
+    def inRange(self,x,lowerbound, upperbound):
+        if x >= lowerbound and x <= upperbound:
+            return True
+        else :
+            return False
+
     def act(self, agent, action):
         assert agent in self.agent_states, "Unknown agent!"
         assert action in self.valid_actions, "Invalid action!"
         #https://medium.com/@annishared/searching-for-optimal-policies-in-python-an-intro-to-optimization-7182d6fe4dba
-                
+
         #STATES PARAMETERS
         cpu_usage = self.current_network_state['cpu']
         probing_f = self.current_network_state['frequency']
@@ -219,71 +228,73 @@ class Environment(object):
         state = self.agent_states[agent]  # the agent's current state
         location = state['location']
         heading = state['heading']
-        
+
         # Move the agent if within bounds and obey traffic rules
         ## Note that the prescribed action translates into the new heading
         reward = 0  # reward/penalty
         move_okay = True
-        if action == 'forward':
-            if load == 'load_error':
+        if action == 'equal':
+            if self.inRange(probing_f,self.lower_interval,self.upper_interval):
+                if load != 'load_error':
+                    if cpu_usage != 'cpu_error':
+                        probing_f = probing_f
+                    else:
+                        if probing_f < (self.upper_interval - 1):
+                            probing_f += 2
+                else:
+                    if probing_f < (self.upper_interval - 1):
+                        probing_f += 2
+
                 move_okay = False
-                probing_f += 4
+
         elif action == 'left':
             ## Reduces current monitoring interval if the control channel is available
-            if probing_f in self.probing_frequencies:
+            if probing_f > self.lower_interval:
                 if load != 'load_error':
-                    if probing_f < 30 and probing_f > 0:
-                        if cpu_usage != "cpu_error":
-                            probing_f -= 1
-                            heading = (heading[1], -heading[0]) # update the heading tuple
-                        else:
-                            move_okay = False
+                    if cpu_usage != 'cpu_error':
+                        probing_f -= 1
+                        heading = (heading[1], -heading[0]) # update the heading tuple
                     else:
-                        move_okay = False
+                        # Increases the monitoring interval to correct the error
+                        if probing_f < (self.upper_interval - 1):
+                            probing_f += 2
                 else:
-                    move_okay = False                           
-            else:
-                move_okay = False
+                    if probing_f < (self.upper_interval - 1):
+                        probing_f += 2
+
         elif action == 'right':
             ## Increases current monitoring interval
-            if probing_f in self.probing_frequencies:
-                if probing_f < 30:
-                    probing_f += 1
-                    heading = (-heading[1], heading[0]) # update the heading tuple
-                else:
-                    move_okay = False    
+            if probing_f < self.upper_interval:
+                probing_f += 1
+                heading = (-heading[1], heading[0])
             else:
-                move_okay = False
-                            
+                if load != 'load_error':
+                    if cpu_usage != 'cpu_error':
+                        probing_f = 5
+
         if action is not None:
             ## Update the current monitoring interval
             #DB
             ConnectionBD_v2.updateProbingFrequency(probing_f)
-            
+
             ## Update the current location (intersection)
             location = (
                 (location[0] + heading[0] - self.bounds[0]) % (self.bounds[2] - self.bounds[0] + 1) + self.bounds[
                     0],
                 (location[1] + heading[1] - self.bounds[1]) % (self.bounds[3] - self.bounds[1] + 1) + self.bounds[
                     1])  # wrap-around
-            
+
             ## Update the location and heading
             state['location'] = location
             state['heading'] = heading
-    
-            if move_okay:
-                # Reward if action matches next waypoint
-                reward = 2 if action == agent.get_next_waypoint() else 0.5
-            else:
-                ## Penalize if action violates traffic rules
-                reward = -1
+
         else:
             ## Reward for doing nothing -- this gives a high tendency to do nothing!
-            reward = 1
+            reward = -1
 
         if agent is self.primary_agent:
             if state['deadline'] >= 0:
-                reward += float(self.gaussian(load_value_tx+load_value_rx, self.goal_load, self.sigma)) + float(self.gaussian(cpu_value,self.goal_cpu, self.sigma)) 
+                reward += float(self.gaussian(load_value_tx+load_value_rx, self.goal_load, self.sigma)) + float(self.gaussian(cpu_value,self.goal_cpu, self.sigma))
                 output_str = str(self.trial) + ". Environment.act(): Primary agent has reached destination!\n"  # [debug]
                 # Record the success trial
                 self.success_trials.append(True)
@@ -291,14 +302,14 @@ class Environment(object):
                 output_str = str(self.trial) + ". Environment.act(): Primary agent has reached destination exceeding deadline!\n"  # [debug]
                 ## Record the failure trial
                 self.success_trials.append(False)
-        
+
             self.cumulative_reward += reward
             output_str += 'Cumulative reward = ' + str(self.cumulative_reward)
             # print (output_str)
             self.fw.write(output_str + '\n')
             self.cumulative_rewards.append(self.cumulative_reward)
-            self.done = True           
-    
+            self.done = True
+
             self.status_text = "state: {}\naction: {}\nreward: {}".format(agent.get_state(), action, reward)
             print "Environment.act() [POST]: location: {}, heading: {}, action: {}, reward: {}".format(location, heading, action, reward)  # [debug]
 
@@ -310,7 +321,7 @@ class Environment(object):
 
 class Agent(object):
     """Base class for all agents."""
-    
+
     def __init__(self, env):
         self.env = env
         self.state = None
@@ -328,12 +339,6 @@ class Agent(object):
 
     def get_next_waypoint(self):
         return self.next_waypoint
-    
+
     def set_params(self):
         pass
-    
-    
-    '''
-    import os
-    os.system("some_command &")
-    '''

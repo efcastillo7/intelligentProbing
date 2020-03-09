@@ -45,3 +45,6 @@ git merge dev
 git push origin master
 
 git merge master -->sincronizar los cambios del master
+
+#reset git add . and commit
+git reset HEAD~1
