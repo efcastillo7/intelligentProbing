@@ -1,0 +1,7 @@
+src VM: vlc -vvv chulapa.mp4 --sout '#standard{access=http,mux=ogg,dst=192.168.56.101:8080}'
+                               
+:sout=#http{mux=asf,dst=:8080/} :sout-keep
+    
+su - mininet -c 'vlc /home/mininet/chulapa.mp4 --no-audio "#standard{access=http,mux=asf,dst:8080}"'
+
+dst VM: vlc http://192.168.56.101:8080

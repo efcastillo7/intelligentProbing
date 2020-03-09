@@ -29,11 +29,15 @@ import re
 
 from Tkinter import Frame, Button, Label, Text, Scrollbar, Canvas, Wm, READABLE
 
+from mininet.net import Mininet
 from mininet.log import setLogLevel
 from mininet.topolib import TreeNet
 from mininet.term import makeTerms, cleanUpScreens
 from mininet.util import quietRun
 from mininet.node import RemoteController
+from mininet.link import Link, TCLink
+from optparse import OptionParser
+from mininet.topolib import TreeTopo
 
 class Console( Frame ):
     "A simple console on a host."
@@ -421,12 +425,12 @@ class ConsoleApp( Frame ):
         for console in consoles:
             # Sometimes iperf -sD doesn't return,
             # so we run it in the background instead
-            console.node.cmd( 'iperf -s &' )
+            console.node.cmd( 'iperf -s -i 1 -u -file /home/efcastillo/ryu/ryu/app/intelligentProbing/data_plane/iperf_server_udp.txt &')
         i = 0
         for console in consoles:
             i = ( i + 1 ) % count
             ip = consoles[ i ].node.IP()
-            console.sendCmd( 'iperf -t 99999 -i 1 -c ' + ip )
+            console.sendCmd( 'iperf -t 100 -i 1 -u -b 200M -c ' + ip + ' cat >> iperf_client_' + ip + '.txt')
 
     def stop( self, wait=True ):
         "Interrupt all hosts."
@@ -460,11 +464,35 @@ class Object( object ):
 
 if __name__ == '__main__':
     setLogLevel( 'info' )
-    c = RemoteController('c', '143.54.12.113', 6633)
-    network = TreeNet( depth=2, fanout=5 )
-    network.addController(c)
+    parser = OptionParser()
+    parser.add_option("","--ip",type="string",default="192.168.1.17")
+
+    (options, args) = parser.parse_args()
+    print options
+
+    topo = TreeTopo( depth=3, fanout=2 )
+
+    # Adding the remote controller    
+    network = Mininet( topo=topo, link=TCLink, autoSetMacs=True, controller=lambda name: RemoteController( name, ip=options.ip ) )
+    #c = RemoteController('c', '192.168.1.119', 6633)
+    #network = TreeNet( depth=3, fanout=2 )
+    #network.addController(c)
     #network.addNAT().configDefault()
     network.start()
     app = ConsoleApp( network, width=4 )
     app.mainloop()
     network.stop()
+
+#https://www.linode.com/docs/networking/diagnostics/install-iperf-to-diagnose-network-speed-in-linux/
+#----------TCP traffic
+#iperf -s                   Server
+
+#iperf -c ip                window size: 8 kByte
+#iperf -c ip -w 2048        window size: 2 kByte
+
+#----------UDP traffic
+#iperf -s -u                Server
+#iperf -s -u -i 1           Server -- cada i segundo
+#iperf -c ip -u             
+
+#http://csie.nqu.edu.tw/smallko/sdn/iperf_mininet.htm
