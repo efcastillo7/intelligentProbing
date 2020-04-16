@@ -8,12 +8,9 @@ import ConnectionBD_v2
 
 from simulator import Simulator
 
-class TrafficLight(object):
-    """
-    A network that switches state periodically.
-    """
+class TrafficSwitch(object):
 
-    valid_states = [True, False]  # True = NS open, False = EW open
+    valid_states = [True, False]
 
     def __init__(self, state=None, period=None):
         self.state = state if state is not None else random.choice(self.valid_states)
@@ -78,12 +75,10 @@ class Environment(object):
         self.upper_interval = 10
         self.lower_interval = 3
 
-        ## Put a traffic light at each intersection
         for x in xrange(self.bounds[0], self.bounds[2] + 1):
             for y in xrange(self.bounds[1], self.bounds[3] + 1):
-                self.intersections[(x, y)] = TrafficLight()  # a traffic light at each intersectio
+                self.intersections[(x, y)] = TrafficSwitch()
 
-        ## Set equal length (1) for all segments
         for a in self.intersections:
             for b in self.intersections:
                 if a == b:
@@ -132,7 +127,6 @@ class Environment(object):
     def reset(self):
         self.done = False
         self.t = 0
-        # Pick random start (origin) and destination
         start = random.choice(self.intersections.keys())
         destination = random.choice(self.intersections.keys())
 
@@ -141,10 +135,8 @@ class Environment(object):
             start = random.choice(self.intersections.keys())
             destination = random.choice(self.intersections.keys())
 
-        ## Set random start heading (N, S, E, W)
         start_heading = random.choice(self.valid_headings)
         deadline = self.compute_dist(start, destination) * 5
-        #print ("Environment.reset(): Trial set up with start = {}, destination = {}, deadline = {}".format(start, destination, deadline))
 
         # Initialize the agent
         for agent in self.agent_states.iterkeys():
@@ -163,14 +155,12 @@ class Environment(object):
         '''
         Update the agents' observations (states)
         '''
-        #print "Environment.step(): t = {}".format(self.t)  # [debug]
 
         for intersection, traffic_light in self.intersections.iteritems():
             traffic_light.update(self.t)
 
         for agent in self.agent_states.iterkeys():
             agent.update(self.t)
-        #print(self.probing_frequency)
 
         self.t += 1
 
@@ -183,14 +173,12 @@ class Environment(object):
                 ## Record the failure trial
                 self.success_trials.append(False)
                 self.cumulative_rewards.append(self.cumulative_reward)
-            self.agent_states[self.primary_agent]['deadline'] -= 1  # decrement the deadline of primary agent
-            #print("Agent Step", self.agent_states[self.primary_agent])
+            self.agent_states[self.primary_agent]['deadline'] -= 1
 
     def sense(self, agent):
         '''
             We get the state of control channel and cpu usage
         '''
-        ## Make sure the agent is one of those created
         assert agent in self.agent_states, "Unknown agent!"
         state = self.agent_states[agent]
 
@@ -212,7 +200,6 @@ class Environment(object):
     def act(self, agent, action):
         assert agent in self.agent_states, "Unknown agent!"
         assert action in self.valid_actions, "Invalid action!"
-        #https://medium.com/@annishared/searching-for-optimal-policies-in-python-an-intro-to-optimization-7182d6fe4dba
 
         #STATES PARAMETERS
         cpu_usage = self.current_network_state['cpu']
@@ -223,14 +210,10 @@ class Environment(object):
         load_value_rx = self.current_value_network_state['load_rx']
         cpu_value = self.current_value_network_state['cpu']
 
-        #print("VALUES", load_value_tx, load_value_rx, cpu_value)
-
         state = self.agent_states[agent]  # the agent's current state
         location = state['location']
         heading = state['heading']
 
-        # Move the agent if within bounds and obey traffic rules
-        ## Note that the prescribed action translates into the new heading
         reward = 0  # reward/penalty
         move_okay = True
         if action == 'equal':
@@ -277,14 +260,13 @@ class Environment(object):
             #DB
             ConnectionBD_v2.updateProbingFrequency(probing_f)
 
-            ## Update the current location (intersection)
+            ## Update the current state
             location = (
                 (location[0] + heading[0] - self.bounds[0]) % (self.bounds[2] - self.bounds[0] + 1) + self.bounds[
                     0],
                 (location[1] + heading[1] - self.bounds[1]) % (self.bounds[3] - self.bounds[1] + 1) + self.bounds[
                     1])  # wrap-around
 
-            ## Update the location and heading
             state['location'] = location
             state['heading'] = heading
 
@@ -305,7 +287,6 @@ class Environment(object):
 
             self.cumulative_reward += reward
             output_str += 'Cumulative reward = ' + str(self.cumulative_reward)
-            # print (output_str)
             self.fw.write(output_str + '\n')
             self.cumulative_rewards.append(self.cumulative_reward)
             self.done = True
